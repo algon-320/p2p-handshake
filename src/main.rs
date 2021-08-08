@@ -75,9 +75,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
                 debug!("socket port = {}", sock.local_addr().unwrap().port());
 
-                let peer_addr =
+                let (my_addr, peer_addr) =
                     client::get_peer_addr(&sock, server_sockaddr, preshared_key.clone())?;
-                client::example(sock, peer_addr, preshared_key)
+                client::example(sock, my_addr, peer_addr, preshared_key)
             };
 
             if let Err(e) = sample_client() {

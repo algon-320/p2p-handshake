@@ -2,12 +2,14 @@ use log::trace;
 use serde::{Deserialize, Serialize};
 use std::net::{SocketAddr, UdpSocket};
 
+use crate::crypto::Sealed;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ClientMessage {
     Hello,
     MatchRequest {
         pubkey: Vec<u8>,
-        enc_matching_key: Vec<u8>,
+        enc_matching_key: Sealed<Vec<u8>>,
     },
 
     #[cfg(feature = "debugging")]
@@ -16,8 +18,13 @@ pub enum ClientMessage {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ServerMessage {
-    ServerPubKey { pubkey: Vec<u8> },
-    Matched { enc_peer_addr: Vec<u8> },
+    ServerPubKey {
+        pubkey: Vec<u8>,
+    },
+    Matched {
+        enc_your_addr: Sealed<SocketAddr>,
+        enc_peer_addr: Sealed<SocketAddr>,
+    },
 }
 
 pub fn send_to<T: Serialize>(v: T, sock: &UdpSocket, to: SocketAddr) -> std::io::Result<()> {
