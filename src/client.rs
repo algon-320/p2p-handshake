@@ -3,10 +3,9 @@ use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 
 use crate::{
-    common::{
-        derive_symmetric_key, recv_from, send_to, ClientMessage, CounterNonce, ServerMessage,
-    },
+    crypto::{derive_symmetric_key, CounterNonce},
     error::{Error, Result},
+    message::{recv_from, send_to, ClientMessage, ServerMessage},
 };
 
 fn send_and_receive(
@@ -122,7 +121,7 @@ pub fn get_peer_addr(sock: &UdpSocket, server_addr: SocketAddr, psk: String) -> 
     }
 }
 
-pub fn interact(sock: &UdpSocket, addr: SocketAddr) -> Result<()> {
+pub fn example(sock: &UdpSocket, addr: SocketAddr) -> Result<()> {
     #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
     pub enum Message {
         Heartbeat,

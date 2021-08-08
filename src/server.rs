@@ -3,10 +3,9 @@ use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 
 use crate::{
-    common::{
-        derive_symmetric_key, recv_from, send_to, ClientMessage, CounterNonce, ServerMessage,
-    },
+    crypto::{derive_symmetric_key, CounterNonce},
     error::Result,
+    message::{recv_from, send_to, ClientMessage, ServerMessage},
 };
 
 #[derive(Debug)]

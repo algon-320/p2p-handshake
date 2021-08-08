@@ -1,5 +1,6 @@
 mod client;
-mod common;
+mod message;
+mod crypto;
 mod error;
 mod server;
 
@@ -75,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 debug!("socket port = {}", sock.local_addr().unwrap().port());
 
                 let peer_addr = client::get_peer_addr(&sock, server_sockaddr, preshared_key)?;
-                client::interact(&sock, peer_addr)
+                client::example(&sock, peer_addr)
             };
 
             if let Err(e) = sample_client() {
