@@ -121,30 +121,70 @@ pub fn get_peer_addr(sock: &UdpSocket, server_addr: SocketAddr, psk: String) -> 
     }
 }
 
-pub fn example(sock: &UdpSocket, addr: SocketAddr) -> Result<()> {
+pub fn example(sock: UdpSocket, addr: SocketAddr) -> Result<()> {
     #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-    pub enum Message {
+    enum Message {
         Heartbeat,
+        Finish,
+        Text(String),
         Data(Vec<u8>),
     }
 
-    sock.set_read_timeout(Duration::from_secs(5).into())?;
-    loop {
-        send_to(Message::Heartbeat, &sock, addr)?;
+    let sock = std::sync::Arc::new(sock);
 
-        let (msg, src) = match recv_from::<String>(&sock) {
-            Err(err) => match err.kind() {
-                std::io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                _ => {
-                    error!("{}", err);
-                    continue;
-                }
-            },
+    use std::thread::{sleep, spawn};
+
+    // stdio interaction
+    {
+        let sock = sock.clone();
+        spawn(move || -> Result<()> {
+            loop {
+                use std::io::{stdin, stdout, Read, Write};
+                write!(stdout(), "> ")?;
+                stdout().flush()?;
+
+                let mut buffer = String::new();
+                stdin().read_to_string(&mut buffer)?;
+
+                send_to(Message::Text(buffer), &sock, addr)?;
+            }
+        });
+    }
+
+    // heartbeat
+    {
+        let sock = sock.clone();
+        spawn(move || -> Result<()> {
+            loop {
+                send_to(Message::Heartbeat, &sock, addr)?;
+                sleep(Duration::from_secs(5));
+            }
+        });
+    }
+
+    loop {
+        let (msg, src) = match recv_from::<Message>(&sock) {
+            Err(err) => {
+                error!("{}", err);
+                sleep(Duration::from_secs(1));
+                continue;
+            }
             Ok(ok) => ok,
         };
-        info!("received a message {:?} from {}", msg, src);
-        std::thread::sleep(Duration::from_secs(5));
+
+        match msg {
+            Message::Heartbeat => {
+                info!("Heatbeat from {}", src);
+            }
+            Message::Data(data) => {
+                println!("\nfrom {}: data = {:?}", src, data);
+            }
+            Message::Text(text) => {
+                println!("\nfrom {}: text = {:?}", src, text);
+            }
+            Message::Finish => {
+                return Ok(());
+            }
+        }
     }
 }
