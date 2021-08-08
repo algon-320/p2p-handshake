@@ -136,11 +136,12 @@ pub fn example(sock: UdpSocket, addr: SocketAddr) -> Result<()> {
 
     // stdio interaction
     {
+        println!("Ctrl-d to transfer the text.");
         let sock = sock.clone();
         spawn(move || -> Result<()> {
             loop {
                 use std::io::{stdin, stdout, Read, Write};
-                write!(stdout(), "> ")?;
+                write!(stdout(), "{} <---: ", addr)?;
                 stdout().flush()?;
 
                 let mut buffer = String::new();
@@ -177,10 +178,10 @@ pub fn example(sock: UdpSocket, addr: SocketAddr) -> Result<()> {
                 info!("Heatbeat from {}", src);
             }
             Message::Data(data) => {
-                println!("\nfrom {}: data = {:?}", src, data);
+                println!("{} --->: {:?}", src, data);
             }
             Message::Text(text) => {
-                println!("\nfrom {}: text = {:?}", src, text);
+                println!("{} --->: {:?}", src, text);
             }
             Message::Finish => {
                 return Ok(());
