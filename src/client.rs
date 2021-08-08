@@ -1,4 +1,5 @@
 use log::{debug, error, info, warn};
+use std::io::prelude::*;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 
@@ -121,7 +122,11 @@ pub fn get_peer_addr(sock: &UdpSocket, server_addr: SocketAddr, psk: String) -> 
     }
 }
 
-pub fn example(sock: UdpSocket, addr: SocketAddr) -> Result<()> {
+pub fn example(sock: UdpSocket, addr: SocketAddr, preshared_key: String) -> Result<()> {
+    use ring::{aead, pbkdf2};
+    use std::sync::{Arc, Mutex};
+    use std::thread::{sleep, spawn};
+
     #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
     enum Message {
         Heartbeat,
@@ -130,24 +135,84 @@ pub fn example(sock: UdpSocket, addr: SocketAddr) -> Result<()> {
         Data(Vec<u8>),
     }
 
-    let sock = std::sync::Arc::new(sock);
+    #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+    struct EncryptedMessage {
+        nonce: [u8; 12],
+        bytes: Vec<u8>,
+    }
 
-    use std::thread::{sleep, spawn};
+    struct Key {
+        key: ring::aead::LessSafeKey,
+        counter: CounterNonce,
+    }
+
+    impl Key {
+        fn new(psk: String) -> Result<Self> {
+            let mut key_bytes: [u8; 32] = [0; 32];
+            pbkdf2::derive(
+                pbkdf2::PBKDF2_HMAC_SHA256,
+                std::num::NonZeroU32::new(100000).unwrap(),
+                &[],
+                psk.as_bytes(),
+                &mut key_bytes,
+            );
+            let key = aead::UnboundKey::new(&aead::AES_256_GCM, &key_bytes)?;
+            let key = aead::LessSafeKey::new(key);
+            Ok(Self {
+                key,
+                counter: CounterNonce::default(),
+            })
+        }
+
+        fn encrypt(&mut self, msg: Message) -> Result<EncryptedMessage> {
+            use aead::NonceSequence;
+            let nonce = self.counter.advance()?;
+            let nonce_bytes = *nonce.as_ref();
+            let aad = aead::Aad::from(nonce_bytes);
+
+            let mut bytes = serde_json::to_vec(&msg).map_err(std::io::Error::from)?;
+            self.key.seal_in_place_append_tag(nonce, aad, &mut bytes)?;
+
+            Ok(EncryptedMessage {
+                nonce: nonce_bytes,
+                bytes,
+            })
+        }
+
+        fn decrypt(&mut self, enc_msg: EncryptedMessage) -> Result<Message> {
+            let mut buf = enc_msg.bytes;
+            let aad = aead::Aad::from(enc_msg.nonce);
+            let nonce = aead::Nonce::assume_unique_for_key(enc_msg.nonce);
+            let slice = self.key.open_in_place(nonce, aad, &mut buf)?;
+            let msg: Message = serde_json::from_slice(slice).map_err(std::io::Error::from)?;
+            Ok(msg)
+        }
+    }
+
+    fn print_prompt(addr: SocketAddr) {
+        print!("{} <---: ", addr);
+        std::io::stdout().flush().unwrap();
+    }
+
+    let key = Arc::new(Mutex::new(Key::new(preshared_key)?));
+    let sock = Arc::new(sock);
 
     // stdio interaction
     {
-        println!("Ctrl-d to transfer the text.");
+        println!("Simple text chat example");
+        println!("[Ctrl-d to transfer the text]");
         let sock = sock.clone();
+        let key = key.clone();
         spawn(move || -> Result<()> {
             loop {
-                use std::io::{stdin, stdout, Read, Write};
-                write!(stdout(), "{} <---: ", addr)?;
-                stdout().flush()?;
+                print_prompt(addr);
 
                 let mut buffer = String::new();
-                stdin().read_to_string(&mut buffer)?;
+                std::io::stdin().read_to_string(&mut buffer)?;
 
-                send_to(Message::Text(buffer), &sock, addr)?;
+                let mut key = key.lock().unwrap();
+                let enc_msg = key.encrypt(Message::Text(buffer))?;
+                send_to(enc_msg, &sock, addr)?;
             }
         });
     }
@@ -155,16 +220,21 @@ pub fn example(sock: UdpSocket, addr: SocketAddr) -> Result<()> {
     // heartbeat
     {
         let sock = sock.clone();
+        let key = key.clone();
         spawn(move || -> Result<()> {
             loop {
-                send_to(Message::Heartbeat, &sock, addr)?;
+                {
+                    let mut key = key.lock().unwrap();
+                    let enc_msg = key.encrypt(Message::Heartbeat)?;
+                    send_to(enc_msg, &sock, addr)?;
+                }
                 sleep(Duration::from_secs(5));
             }
         });
     }
 
     loop {
-        let (msg, src) = match recv_from::<Message>(&sock) {
+        let (enc_msg, src) = match recv_from::<EncryptedMessage>(&sock) {
             Err(err) => {
                 error!("{}", err);
                 sleep(Duration::from_secs(1));
@@ -172,16 +242,19 @@ pub fn example(sock: UdpSocket, addr: SocketAddr) -> Result<()> {
             }
             Ok(ok) => ok,
         };
+        let msg = key.lock().unwrap().decrypt(enc_msg)?;
 
         match msg {
             Message::Heartbeat => {
                 info!("Heatbeat from {}", src);
             }
             Message::Data(data) => {
-                println!("{} --->: {:?}", src, data);
+                println!("\n{} --->: {:?}", src, data);
+                print_prompt(addr);
             }
             Message::Text(text) => {
-                println!("{} --->: {:?}", src, text);
+                println!("\n{} --->: {:?}", src, text);
+                print_prompt(addr);
             }
             Message::Finish => {
                 return Ok(());
