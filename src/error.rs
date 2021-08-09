@@ -3,8 +3,13 @@ use thiserror::Error;
 pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
+
+    #[error("Serialization/Deserialization error")]
+    Serde(#[from] serde_cbor::Error),
+
     #[error("Crypto error")]
     Crypto,
+
     #[error("Unexpected message")]
     UnexpectedMessage,
 }

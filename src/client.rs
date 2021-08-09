@@ -25,11 +25,11 @@ fn send_and_receive(
                     warn!("message from other than the server: {}", src);
                     continue 'wait;
                 }
-                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                Err(Error::Io(err)) if err.kind() == std::io::ErrorKind::WouldBlock => {
                     debug!("timeout");
                     continue 'resend;
                 }
-                Err(err) => return Err(err.into()),
+                Err(err) => return Err(err),
                 Ok((msg, _)) => return Ok(msg),
             }
         }
@@ -175,7 +175,7 @@ pub fn example(
 
     loop {
         let (enc_msg, src) = match recv_from::<Sealed<Message>>(&sock) {
-            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+            Err(Error::Io(err)) if err.kind() == std::io::ErrorKind::WouldBlock => {
                 debug!("timeout");
                 continue;
             }

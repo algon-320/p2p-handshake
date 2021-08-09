@@ -2,7 +2,7 @@ use log::trace;
 use serde::{Deserialize, Serialize};
 use std::net::{SocketAddr, UdpSocket};
 
-use crate::crypto::Sealed;
+use crate::{crypto::Sealed, error::Result};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ClientMessage {
@@ -27,8 +27,8 @@ pub enum ServerMessage {
     },
 }
 
-pub fn send_to<T: Serialize>(v: T, sock: &UdpSocket, to: SocketAddr) -> std::io::Result<()> {
-    let bytes = serde_json::to_vec(&v).unwrap();
+pub fn send_to<T: Serialize>(v: T, sock: &UdpSocket, to: SocketAddr) -> Result<()> {
+    let bytes = serde_cbor::to_vec(&v)?;
     trace!(
         "sending: {}",
         std::str::from_utf8(&bytes).expect("UTF-8 JSON")
@@ -37,12 +37,10 @@ pub fn send_to<T: Serialize>(v: T, sock: &UdpSocket, to: SocketAddr) -> std::io:
     Ok(())
 }
 
-pub fn recv_from<T: serde::de::DeserializeOwned>(
-    sock: &UdpSocket,
-) -> std::io::Result<(T, SocketAddr)> {
+pub fn recv_from<T: serde::de::DeserializeOwned>(sock: &UdpSocket) -> Result<(T, SocketAddr)> {
     let mut buf = [0; 4096];
     let (sz, src) = sock.recv_from(&mut buf)?;
     trace!("src={}", src);
-    let msg: T = serde_json::from_slice(&buf[..sz])?;
+    let msg: T = serde_cbor::from_slice(&buf[..sz])?;
     Ok((msg, src))
 }
