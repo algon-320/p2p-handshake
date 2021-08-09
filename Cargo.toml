@@ -16,3 +16,11 @@ clap = "2.33.3"
 
 [features]
 debugging = []
+
+[lib]
+name = "p2p_handshake"
+path = "src/lib.rs"
+
+[[bin]]
+name = "p2p-handshake-server"
+path = "src/server.rs"

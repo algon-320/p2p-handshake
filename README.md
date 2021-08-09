@@ -3,15 +3,15 @@ Simple experimental protocol to establish a peer-to-peer UDP channel.
 
 ## Usage
 
-1. on a public server:
+1. on a public server host:
     ```
-    $ # cargo run -- server [--port <port>|-p <port>]
-    $ cargo run -- server -p 31415
+    $ # cargo run -- [--port <port>|-p <port>]
+    $ cargo run -- -p 31415
     ```
-2. on clients:
+2. on client hosts:
     ```
-    $ # cargo run -- client <server-address> <server-port> <pre-shared-key>
-    $ cargo run -- client 127.0.0.1 31415 "foo-2021-08-07"
+    $ # cargo run --example chat -- <server-address> <server-port> <pre-shared-key>
+    $ cargo run --example chat -- 127.0.0.1 31415 "foo-2021-08-07"
     ```
 
 ## The Handshake Protocol

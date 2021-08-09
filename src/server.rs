@@ -2,7 +2,7 @@ use log::{debug, error, info};
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 
-use crate::{
+use p2p_handshake::{
     crypto::{derive_symmetric_key, Sealed, SymmetricKey},
     error::Result,
     message::{recv_from, send_to, ClientMessage, ServerMessage},
@@ -163,4 +163,34 @@ pub fn server(port: u16) -> Result<()> {
             }
         }
     }
+}
+
+fn main() -> Result<()> {
+    env_logger::init();
+
+    let matches = clap::App::new("p2p-handshake-server")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author("algon-320 <algon.0320@mail.com>")
+        .arg(
+            clap::Arg::with_name("port")
+                .short("p")
+                .long("port")
+                .takes_value(true)
+                .required(false),
+        )
+        .get_matches();
+
+    let port_s = matches.value_of("port").unwrap_or("31415");
+    let port = match port_s.parse::<u16>() {
+        Ok(p) => p,
+        Err(err) => {
+            error!("Invalid port number: {}", err);
+            return Ok(());
+        }
+    };
+
+    if let Err(e) = server(port) {
+        error!("{}", e);
+    }
+    Ok(())
 }
