@@ -75,14 +75,14 @@ fn text_chat(
 ) -> Result<()> {
     let sock = Arc::new(sock);
 
+    // `key_id` is needed to agree the same "direction" of encryption on both sides.
     assert_ne!(my_addr, peer_addr);
     let key_id = if my_addr < peer_addr { 0 } else { 1 };
     debug!("key_id = {}", key_id);
 
-    let key = Arc::new(Mutex::new(SymmetricKey::new(
-        preshared_key.as_bytes(),
-        key_id,
-    )?));
+    // derive a symmetric key for encryption of messages
+    let key = SymmetricKey::new(preshared_key.as_bytes(), key_id)?;
+    let key = Arc::new(Mutex::new(key));
 
     // spawn threads
     spawn_read_stdin_thread(sock.clone(), key.clone(), peer_addr);
@@ -107,6 +107,7 @@ fn text_chat(
             continue 'process_message;
         }
 
+        // decrypt received message
         let msg = {
             let key = key.lock().unwrap();
             match key.decrypt(enc_msg) {
@@ -146,7 +147,10 @@ fn start(matches: clap::ArgMatches) -> std::result::Result<(), Box<dyn std::erro
         (addr, port).to_socket_addrs()?.next().unwrap()
     };
 
+    // get peer's address and port number
     let (my_addr, peer_addr) = get_peer_addr(&sock, server_sockaddr, psk.clone())?;
+
+    // start text chating
     text_chat(sock, my_addr, peer_addr, psk)?;
     Ok(())
 }

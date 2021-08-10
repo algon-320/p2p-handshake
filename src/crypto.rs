@@ -15,7 +15,16 @@ pub struct SymmetricKey {
 }
 
 impl SymmetricKey {
-    pub fn new(key_material: &[u8], id: u32) -> Result<Self> {
+    /// For entities which share the same symmetric key,
+    /// each entity has to use unique `nonce_id`,
+    /// because the use of same `nonce_id` causes nonce duplication
+    /// which could invalidate the encryption.
+    ///
+    /// For example, on encryption between two entities (A and B),
+    /// they have to use different `nonce_id`s.
+    ///     If A uses `nonce_id` = 0 then
+    ///     B can use `nonce_id` = 1 (other than 0 since 0 is used by A)
+    pub fn new(key_material: &[u8], nonce_id: u32) -> Result<Self> {
         let mut key_bytes: [u8; 32] = [0; 32];
         let pbkdf2 = pbkdf2::PBKDF2_HMAC_SHA256;
         let iteration = std::num::NonZeroU32::new(100000).unwrap();
@@ -26,7 +35,7 @@ impl SymmetricKey {
 
         Ok(Self {
             key,
-            counter: CounterNonce::new(id),
+            counter: CounterNonce::new(nonce_id),
         })
     }
 
@@ -74,6 +83,7 @@ pub fn derive_symmetric_key(
 pub struct CounterNonce(u64, u32);
 
 impl CounterNonce {
+    /// Different `id`s yield difference nonce sequences.
     pub fn new(id: u32) -> Self {
         Self(0, id)
     }
