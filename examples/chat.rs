@@ -30,17 +30,20 @@ fn spawn_read_stdin_thread(
 ) {
     println!("Simple text chat example");
     println!("[Ctrl-d to transfer the text]");
-    spawn(move || -> Result<()> {
-        loop {
-            print_prompt(peer_addr);
+    spawn(move || {
+        || -> Result<()> {
+            loop {
+                print_prompt(peer_addr);
 
-            let mut buffer = String::new();
-            std::io::stdin().read_to_string(&mut buffer)?;
+                let mut buffer = String::new();
+                std::io::stdin().read_to_string(&mut buffer)?;
 
-            let mut key = key.lock().unwrap();
-            let enc_msg = key.encrypt(Message::Text(buffer))?;
-            send_to(enc_msg, &sock, peer_addr)?;
-        }
+                let mut key = key.lock().unwrap();
+                let enc_msg = key.encrypt(Message::Text(buffer))?;
+                send_to(enc_msg, &sock, peer_addr)?;
+            }
+        }()
+        .unwrap_or_else(|e| error!("stdin thread panicked: {}", e))
     });
 }
 
@@ -49,15 +52,18 @@ fn spawn_heartbeat_thread(
     key: Arc<Mutex<SymmetricKey>>,
     peer_addr: SocketAddr,
 ) {
-    spawn(move || -> Result<()> {
-        loop {
-            {
-                let mut key = key.lock().unwrap();
-                let enc_msg = key.encrypt(Message::Heartbeat)?;
-                send_to(enc_msg, &sock, peer_addr)?;
+    spawn(move || {
+        || -> Result<()> {
+            loop {
+                {
+                    let mut key = key.lock().unwrap();
+                    let enc_msg = key.encrypt(Message::Heartbeat)?;
+                    send_to(enc_msg, &sock, peer_addr)?;
+                }
+                sleep(Duration::from_secs(5));
             }
-            sleep(Duration::from_secs(5));
-        }
+        }()
+        .unwrap_or_else(|e| error!("heartbeat thread panicked: {}", e))
     });
 }
 
@@ -67,34 +73,50 @@ fn text_chat(
     peer_addr: SocketAddr,
     preshared_key: String,
 ) -> Result<()> {
+    let sock = Arc::new(sock);
+
     assert_ne!(my_addr, peer_addr);
     let key_id = if my_addr < peer_addr { 0 } else { 1 };
-
     debug!("key_id = {}", key_id);
+
     let key = Arc::new(Mutex::new(SymmetricKey::new(
         preshared_key.as_bytes(),
         key_id,
     )?));
-    let sock = Arc::new(sock);
 
     // spawn threads
     spawn_read_stdin_thread(sock.clone(), key.clone(), peer_addr);
     spawn_heartbeat_thread(sock.clone(), key.clone(), peer_addr);
 
-    loop {
+    'process_message: loop {
         let (enc_msg, src) = match recv_from::<Sealed<Message>>(&sock) {
+            Ok(ok) => ok,
             Err(Error::Io(err)) if err.kind() == std::io::ErrorKind::WouldBlock => {
                 debug!("timeout");
-                continue;
+                continue 'process_message;
             }
             Err(err) => {
                 error!("{}", err);
                 sleep(Duration::from_secs(1));
-                continue;
+                continue 'process_message;
             }
-            Ok(ok) => ok,
         };
-        let msg = key.lock().unwrap().decrypt(enc_msg)?;
+
+        if src != peer_addr {
+            error!("message from other than the expected peer. ignored.");
+            continue 'process_message;
+        }
+
+        let msg = {
+            let key = key.lock().unwrap();
+            match key.decrypt(enc_msg) {
+                Ok(msg) => msg,
+                Err(err) => {
+                    error!("invalid message: {}", err);
+                    continue 'process_message;
+                }
+            }
+        };
 
         match msg {
             Message::Heartbeat => {
@@ -108,7 +130,28 @@ fn text_chat(
     }
 }
 
-fn main() -> Result<()> {
+fn start(matches: clap::ArgMatches) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
+    debug!("socket port = {}", sock.local_addr().unwrap().port());
+
+    let psk = matches
+        .value_of("preshared-key")
+        .expect("required arg")
+        .to_owned();
+
+    let server_sockaddr = {
+        let addr = matches.value_of("server-address").expect("required arg");
+        let port = matches.value_of("server-port").expect("required arg");
+        let port = port.parse::<u16>()?;
+        (addr, port).to_socket_addrs()?.next().unwrap()
+    };
+
+    let (my_addr, peer_addr) = get_peer_addr(&sock, server_sockaddr, psk.clone())?;
+    text_chat(sock, my_addr, peer_addr, psk)?;
+    Ok(())
+}
+
+fn main() {
     env_logger::init();
 
     let matches = clap::App::new("p2p-chat-example")
@@ -131,22 +174,10 @@ fn main() -> Result<()> {
         )
         .get_matches();
 
-    let addr = matches.value_of("server-address").unwrap();
-    let port: u16 = matches
-        .value_of("server-port")
-        .unwrap_or("31415")
-        .parse::<u16>()
-        .unwrap();
-    let psk = matches.value_of("preshared-key").unwrap().to_owned();
-
-    let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
-    debug!("socket port = {}", sock.local_addr().unwrap().port());
-
-    let mut server_addr = (addr, port).to_socket_addrs()?;
-    let server_addr = server_addr.next().unwrap();
-
-    let (my_addr, peer_addr) = get_peer_addr(&sock, server_addr, psk.clone())?;
-    text_chat(sock, my_addr, peer_addr, psk)?;
-
-    Ok(())
+    match start(matches) {
+        Ok(()) => {}
+        Err(err) => {
+            error!("{}", err);
+        }
+    }
 }
