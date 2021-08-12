@@ -12,9 +12,10 @@ env_logger = "0.9.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_cbor = "0.11.1"
 ring = "0.16.20"
-clap = "2.33.3"
+clap = { version = "2.33.3", optional = true }
 
 [features]
+cli = ["clap"]
 debugging = []
 
 [lib]
@@ -24,3 +25,8 @@ path = "src/lib.rs"
 [[bin]]
 name = "p2p-handshake-server"
 path = "src/server.rs"
+required-features = ["cli"]
+
+[[example]]
+name = "text-chat"
+required-features = ["cli"]

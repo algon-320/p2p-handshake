@@ -5,13 +5,13 @@ Simple experimental protocol to establish a peer-to-peer UDP channel.
 
 1. on a public server host:
     ```
-    $ # cargo run -- [--port <port>|-p <port>]
-    $ cargo run -- -p 31415
+    $ # cargo run --features=cli -- [--port <port>|-p <port>]
+    $ cargo run --features=cli -- -p 31415
     ```
 2. on client hosts:
     ```
-    $ # cargo run --example text-chat -- <server-address> <server-port> <pre-shared-key>
-    $ cargo run --example text-chat -- 127.0.0.1 31415 "foo-2021-08-07"
+    $ # cargo run --features=cli --example text-chat -- <server-address> <server-port> <pre-shared-key>
+    $ cargo run --features=cli --example text-chat -- 127.0.0.1 31415 "foo-2021-08-07"
     ```
 
 ## The Handshake Protocol
