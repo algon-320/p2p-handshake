@@ -71,7 +71,7 @@ fn text_chat(
     sock: UdpSocket,
     my_addr: SocketAddr,
     peer_addr: SocketAddr,
-    preshared_key: String,
+    preshared_key: &[u8],
 ) -> Result<()> {
     let sock = Arc::new(sock);
 
@@ -81,7 +81,7 @@ fn text_chat(
     debug!("key_id = {}", key_id);
 
     // derive a symmetric key for encryption of messages
-    let key = SymmetricKey::new(preshared_key.as_bytes(), key_id)?;
+    let key = SymmetricKey::new(preshared_key, key_id)?;
     let key = Arc::new(Mutex::new(key));
 
     // spawn threads
@@ -135,10 +135,7 @@ fn start(matches: clap::ArgMatches) -> std::result::Result<(), Box<dyn std::erro
     let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
     debug!("socket port = {}", sock.local_addr().unwrap().port());
 
-    let psk = matches
-        .value_of("preshared-key")
-        .expect("required arg")
-        .to_owned();
+    let psk = matches.value_of("preshared-key").expect("required arg");
 
     let server_sockaddr = {
         let addr = matches.value_of("server-address").expect("required arg");
@@ -148,10 +145,10 @@ fn start(matches: clap::ArgMatches) -> std::result::Result<(), Box<dyn std::erro
     };
 
     // get peer's address and port number
-    let (my_addr, peer_addr) = get_peer_addr(&sock, server_sockaddr, psk.clone())?;
+    let (my_addr, peer_addr) = get_peer_addr(&sock, server_sockaddr, psk.as_bytes())?;
 
     // start text chating
-    text_chat(sock, my_addr, peer_addr, psk)?;
+    text_chat(sock, my_addr, peer_addr, psk.as_bytes())?;
     Ok(())
 }
 

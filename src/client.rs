@@ -38,14 +38,14 @@ fn send_and_receive(
 pub fn get_peer_addr(
     sock: &UdpSocket,
     server_addr: SocketAddr,
-    psk: String,
+    psk: &[u8],
 ) -> Result<(SocketAddr, SocketAddr)> {
     info!("psk = {:?}", psk);
     sock.set_read_timeout(Duration::from_secs(10).into())?;
 
     let matching_key = {
         use ring::digest::{digest, SHA256};
-        digest(&SHA256, psk.as_bytes()).as_ref().to_vec()
+        digest(&SHA256, psk).as_ref().to_vec()
     };
 
     'main: loop {
