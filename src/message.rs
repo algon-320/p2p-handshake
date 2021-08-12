@@ -29,10 +29,7 @@ pub enum ServerMessage {
 
 pub fn send_to<T: Serialize>(v: T, sock: &UdpSocket, to: SocketAddr) -> Result<()> {
     let bytes = serde_cbor::to_vec(&v)?;
-    trace!(
-        "sending: {}",
-        std::str::from_utf8(&bytes).expect("UTF-8 JSON")
-    );
+    trace!("sending: {:?}", bytes);
     let _ = sock.send_to(&bytes, to)?;
     Ok(())
 }
